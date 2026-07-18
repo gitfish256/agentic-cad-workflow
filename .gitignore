@@ -1,0 +1,45 @@
+# Python environments and caches
+.venv/
+.venv*/
+venv/
+env/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Packaging and local smoke environments
+build/
+dist/
+*.egg-info/
+wheel-smoke/
+
+# Generated CAD runs and private work material
+outputs/
+.hermes-runs/
+/result.json
+worklog.md
+WORKLOG.md
+moved/
+
+# Secrets and machine-local configuration
+.env
+.env.*
+!.env.example
+*.log
+.codex/
+.claude/
+.agents/
+.mcp.json
+claude_desktop_config.json
+codex.toml
+.idea/
+.vscode/
+
+# Operating-system files
+.DS_Store
+Thumbs.db
+Desktop.ini

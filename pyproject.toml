@@ -1,0 +1,111 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "agentic-cad-workflow"
+version = "0.5.0"
+description = "Local agentic CAD workflow: an MCP server, CLI, and portable agent guide for prompt-driven CadQuery generation, rendering, inspection, and refinement."
+readme = "README.md"
+requires-python = ">=3.10,<3.13"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "agentic-cad-workflow contributors" }]
+keywords = ["cad", "cadquery", "mcp", "3d-printing", "agentic-workflow"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Operating System :: Microsoft :: Windows",
+  "Operating System :: MacOS",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Multimedia :: Graphics :: 3D Modeling",
+]
+# matplotlib (Agg) renders PNG previews headless with pure pip wheels on
+# Windows/macOS/Linux; cairosvg was dropped because it needs a native Cairo
+# library that pip cannot install on Windows.
+dependencies = [
+  "cadquery>=2.5,<3",
+  "mcp>=1.28,<2",
+  "matplotlib>=3.8,<4",
+  "numpy>=1.25,<3",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8",
+  "pytest-asyncio>=0.23",
+  "build>=1.2",
+  "twine>=6",
+]
+
+[project.scripts]
+agentic-cad-mcp = "agentic_cad_workflow.server:main"
+agentic-cad-build = "agentic_cad_workflow.cli:main"
+agentic-cad-install-hermes-skill = "agentic_cad_workflow.install_skill:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/agentic_cad_workflow"]
+# Non-Python files under the package (e.g. bundled_skills/**/SKILL.md) are
+# included as package data by default and shipped inside the wheel.
+
+[tool.hatch.build.targets.wheel.force-include]
+# Ship the canonical agent-neutral workflow in installed wheels as a package
+# resource.  The repository copy remains the single source of truth.
+"agent-workflows/agentic-cad-workflow.md" = "agentic_cad_workflow/bundled_workflows/agentic-cad-workflow.md"
+
+[tool.hatch.build.targets.sdist]
+# Use an explicit public-source allowlist so a local worklog, generated model,
+# agent configuration, or editor state cannot enter an sdist by accident.
+include = [
+  "/.github",
+  "/agent-workflows",
+  "/docs",
+  "/examples",
+  "/scripts",
+  "/src",
+  "/tests",
+  "/.gitignore",
+  "/AGENTS.md",
+  "/CLAUDE.md",
+  "/CONTRIBUTING.md",
+  "/LICENSE",
+  "/README.md",
+  "/SECURITY.md",
+  "/pyproject.toml",
+]
+exclude = [
+  "/.agents",
+  "/.claude",
+  "/.codex",
+  "/.env",
+  "/.env.*",
+  "/.idea",
+  "/.pytest_cache",
+  "/.ruff_cache",
+  "/.venv",
+  "/.vscode",
+  "/WORKLOG.md",
+  "/build",
+  "/dist",
+  "/moved",
+  "/outputs",
+  "/worklog.md",
+  "**/.agents/**",
+  "**/.claude/**",
+  "**/.codex/**",
+  "**/.env",
+  "**/.env.*",
+  "**/__pycache__/**",
+  "**/*.pyc",
+  "**/WORKLOG.md",
+  "**/worklog.md",
+]
