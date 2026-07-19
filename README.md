@@ -1,5 +1,9 @@
 # agentic-cad-workflow
 
+[![tests](https://github.com/gitfish256/agentic-cad-workflow/actions/workflows/tests.yml/badge.svg)](https://github.com/gitfish256/agentic-cad-workflow/actions/workflows/tests.yml)
+![Python 3.10-3.14](https://img.shields.io/badge/python-3.10--3.14-blue)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+
 An agent-neutral CAD runtime and portable workflow for turning natural-language
 physical-object prompts into measured, rendered, heuristically validated
 STL/STEP/BREP model files.
@@ -12,6 +16,8 @@ not use MCP sampling.
 
 Powered by [CadQuery](https://cadquery.readthedocs.io/); not affiliated with,
 sponsored by, or endorsed by the CadQuery project.
+
+![Shaded preview of the included ring-brim example](docs/images/ring-brim-isometric.png)
 
 ## Architecture
 
@@ -44,7 +50,7 @@ The workflow is intentionally split into three layers:
 
 ## Prerequisites
 
-Python 3.10-3.12 is supported. Clone or download this repository before running
+Python 3.10-3.14 is supported. Clone or download this repository before running
 the commands below. Linux also needs the OpenGL runtime used by CadQuery/OCP:
 
 ```bash
@@ -185,6 +191,13 @@ it authors code, calls `execute_cadquery`, judges evidence, and revises code.
 
 ## Agent without MCP
 
+An installed wheel exposes the same canonical guide used by repository-aware
+agents:
+
+```bash
+agentic-cad-build --print-workflow
+```
+
 An agent with shell access can write a CadQuery source file and run:
 
 ```bash
@@ -290,6 +303,8 @@ credentials or secrets in a model prompt or generated CadQuery code.
 Windows:
 
 ```powershell
+.\.venv\Scripts\python.exe -m ruff check .
+.\.venv\Scripts\python.exe -m ruff format --check .
 .\.venv\Scripts\python.exe -m pytest -q
 .\.venv\Scripts\python.exe -m compileall -q src tests
 .\.venv\Scripts\python.exe -m pip check
@@ -300,6 +315,8 @@ Windows:
 macOS/Linux:
 
 ```bash
+./.venv/bin/python -m ruff check .
+./.venv/bin/python -m ruff format --check .
 ./.venv/bin/python -m pytest -q
 ./.venv/bin/python -m compileall -q src tests
 ./.venv/bin/python -m pip check
@@ -307,9 +324,9 @@ macOS/Linux:
 ./.venv/bin/python -m twine check dist/*
 ```
 
-CI runs the test suite on Windows, macOS, and Ubuntu with Python 3.10-3.12, then
-builds the wheel once and performs real CLI and MCP builds from clean wheel
-installs on all three operating systems.
+CI runs lint/format checks, exercises Python 3.10-3.14, and tests Windows,
+macOS, and Ubuntu. It then builds the wheel once and performs real CLI and MCP
+builds from clean Python 3.14 wheel installs on all three operating systems.
 
 ## License
 

@@ -10,7 +10,7 @@ does not call an LLM.
 
 ## Development setup
 
-Use Python 3.10-3.12. Linux contributors must install `libgl1` before installing
+Use Python 3.10-3.14. Linux contributors must install `libgl1` before installing
 CadQuery/OCP. Create a virtual environment, then install an editable checkout:
 
 ```bash
@@ -28,6 +28,8 @@ On Windows, run the same command through the environment's Python executable:
 Run the test suite and packaging checks appropriate to your platform:
 
 ```bash
+python -m ruff check .
+python -m ruff format --check .
 python -m pytest -q
 python -m compileall -q src tests
 python -m pip check

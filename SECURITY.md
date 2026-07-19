@@ -49,9 +49,13 @@ runs when they are no longer needed.
 
 ## Reporting a vulnerability
 
-For a private repository, use the repository owner's private security-reporting
-channel. Before making the repository public, enable GitHub private vulnerability
-reporting and update this section with the final security contact.
+If this repository is public and GitHub private vulnerability reporting is
+enabled, use [**Report a vulnerability**](https://github.com/gitfish256/agentic-cad-workflow/security/advisories/new)
+on the repository's Security tab. Maintainers of a public repository may instead
+open a draft repository security advisory. While the repository is private, or
+if neither public-repository option is available, contact the maintainer through
+an existing private channel. As a last resort, open an issue asking for a private
+contact method, but do not include vulnerability details in that issue.
 
 Please include affected versions, reproduction steps, expected impact, and any
-suggested mitigation. Do not include secrets or personal data in a public issue.
+suggested mitigation. Do not include secrets or personal data in a report.
