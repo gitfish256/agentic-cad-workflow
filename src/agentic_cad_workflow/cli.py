@@ -1,15 +1,15 @@
 from __future__ import annotations
 
 import argparse
-import asyncio
 import json
 import math
 import sys
 from pathlib import Path
 
 from .generator import build_model_from_code
-from .runner import PREVIEW_STYLES
+from .runner import DEFAULT_EXECUTION_TIMEOUT_SECONDS, PREVIEW_STYLES
 from .validation import VALIDATION_PROFILES
+from .workflow import read_portable_workflow
 
 
 def _read_code(source: str) -> str:
@@ -40,7 +40,12 @@ def main(argv: list[str] | None = None) -> int:
             "Pass '-' to read the code from stdin."
         ),
     )
-    parser.add_argument("source", help="CadQuery Python file, or '-' for stdin")
+    parser.add_argument("source", nargs="?", help="CadQuery Python file, or '-' for stdin")
+    parser.add_argument(
+        "--print-workflow",
+        action="store_true",
+        help="Print the bundled agent-neutral workflow as UTF-8 and exit",
+    )
     parser.add_argument(
         "--prompt",
         default="agent-authored CadQuery model",
@@ -62,15 +67,33 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--execution-timeout",
         type=float,
-        default=60.0,
-        help="Maximum CadQuery execution time in seconds (default 60)",
+        default=DEFAULT_EXECUTION_TIMEOUT_SECONDS,
+        help="Maximum CadQuery execution time in seconds (default: %(default)g)",
     )
     args = parser.parse_args(argv)
+
+    if args.print_workflow:
+        if args.source is not None:
+            parser.error("source cannot be used with --print-workflow")
+        try:
+            workflow = read_portable_workflow()
+        except Exception as exc:
+            _stderr(f"Could not read portable workflow: {type(exc).__name__}: {exc}")
+            return 1
+        try:
+            sys.stdout.reconfigure(encoding="utf-8")
+        except (AttributeError, OSError):
+            pass
+        sys.stdout.write(workflow)
+        if not workflow.endswith("\n"):
+            sys.stdout.write("\n")
+        return 0
+
+    if args.source is None:
+        parser.error("source is required unless --print-workflow is used")
     if not math.isfinite(args.execution_timeout) or args.execution_timeout <= 0:
         parser.error("--execution-timeout must be a finite number > 0")
-    if args.bed_size is not None and (
-        not math.isfinite(args.bed_size) or args.bed_size <= 0
-    ):
+    if args.bed_size is not None and (not math.isfinite(args.bed_size) or args.bed_size <= 0):
         parser.error("--bed-size must be a finite number > 0")
 
     try:
@@ -85,16 +108,14 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     try:
-        result = asyncio.run(
-            build_model_from_code(
-                code,
-                prompt=args.prompt,
-                output_dir=args.output_dir,
-                profile=args.validation_profile,
-                max_print_dim_mm=args.bed_size,
-                style=args.style,
-                execution_timeout=args.execution_timeout,
-            )
+        result = build_model_from_code(
+            code,
+            prompt=args.prompt,
+            output_dir=args.output_dir,
+            profile=args.validation_profile,
+            max_print_dim_mm=args.bed_size,
+            style=args.style,
+            execution_timeout=args.execution_timeout,
         )
     except Exception as exc:
         result = {

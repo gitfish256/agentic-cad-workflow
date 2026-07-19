@@ -22,9 +22,7 @@ _SKILL_SUBPATH = ("bundled_skills", "agentic-cad-workflow", "SKILL.md")
 _SKILL_FILENAME = "SKILL.md"
 
 # Default install target: ~/.hermes/skills/creative/agentic-cad-workflow/SKILL.md
-_DEFAULT_DEST = (
-    Path.home() / ".hermes" / "skills" / "creative" / "agentic-cad-workflow" / _SKILL_FILENAME
-)
+_DEFAULT_DEST = Path.home() / ".hermes" / "skills" / "creative" / "agentic-cad-workflow" / _SKILL_FILENAME
 
 
 def _bundled_skill_resource():
@@ -64,9 +62,7 @@ def install_skill(destination: str | None = None, force: bool = False) -> Path:
         if existing == content:
             return dest  # Already up to date; nothing to do.
         if not force:
-            raise FileExistsError(
-                f"{dest} already exists with different content. Re-run with --force to overwrite."
-            )
+            raise FileExistsError(f"{dest} already exists with different content. Re-run with --force to overwrite.")
 
     dest.parent.mkdir(parents=True, exist_ok=True)
     with resources.as_file(_bundled_skill_resource()) as src:
@@ -86,10 +82,7 @@ def main(argv: list[str] | None = None) -> int:
         "destination",
         nargs="?",
         default=None,
-        help=(
-            "Optional destination directory or SKILL.md file path. "
-            f"Default: {_DEFAULT_DEST}"
-        ),
+        help=(f"Optional destination directory or SKILL.md file path. Default: {_DEFAULT_DEST}"),
     )
     parser.add_argument(
         "--force",

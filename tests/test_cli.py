@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from agentic_cad_workflow.cli import main
-
+from agentic_cad_workflow.workflow import read_portable_workflow
 
 BOX_CODE = """import cadquery as cq
 result = cq.Workplane("XY").box(20, 20, 10).translate((0, 0, 5))
@@ -16,6 +16,22 @@ show_object(result, name="box")
 def _payload(capsys):
     captured = capsys.readouterr()
     return json.loads(captured.out), captured.err
+
+
+def test_cli_prints_portable_workflow_without_source(capsys):
+    exit_code = main(["--print-workflow"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0, captured.err
+    assert captured.out == read_portable_workflow()
+    assert "# Agentic CAD Workflow - portable agent guide" in captured.out
+
+
+def test_cli_requires_source_without_print_workflow():
+    with pytest.raises(SystemExit) as exc_info:
+        main([])
+
+    assert exc_info.value.code == 2
 
 
 def test_cli_builds_file_from_path_with_spaces(tmp_path, capsys):
@@ -159,9 +175,7 @@ def test_cli_returns_json_when_output_directory_is_a_file(tmp_path, capsys):
     invalid_output_dir = tmp_path / "already-a-file"
     invalid_output_dir.write_text("not a directory", encoding="utf-8")
 
-    exit_code = main(
-        [str(source), "--output-dir", str(invalid_output_dir)]
-    )
+    exit_code = main([str(source), "--output-dir", str(invalid_output_dir)])
 
     payload, stderr = _payload(capsys)
     assert exit_code == 1

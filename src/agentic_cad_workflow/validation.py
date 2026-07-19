@@ -5,7 +5,6 @@ from typing import Any
 
 from .runner import ShapeProperties
 
-
 VALIDATION_PROFILES = ("printable", "reference", "assembly")
 DEFAULT_MAX_PRINT_DIM_MM = 300.0
 
@@ -40,7 +39,7 @@ class ValidationReport:
             }
         )
 
-    def finalize(self) -> "ValidationReport":
+    def finalize(self) -> ValidationReport:
         total = sum(float(c["weight"]) for c in self.checks) or 1.0
         got = sum(float(c["weight"]) for c in self.checks if c["passed"])
         self.score = got / total
@@ -48,9 +47,7 @@ class ValidationReport:
         if self.profile == "printable":
             critical.add("stl_printable_size")
             critical.add("print_bed_base")
-        self.valid = self.score >= 0.84 and all(
-            c["passed"] for c in self.checks if c["name"] in critical
-        )
+        self.valid = self.score >= 0.84 and all(c["passed"] for c in self.checks if c["name"] in critical)
         failed = [c["name"] for c in self.checks if not c["passed"]]
         advisories = [c["name"] for c in self.checks if c.get("severity") == "warning"]
         if failed:
@@ -141,7 +138,11 @@ def validate_prompt_shape(
             True,
             (
                 f"bounding-box dimensions are {dims} mm; "
-                + (f"fits a {max_dim:g}mm bed" if fits_bed else f"exceeds a {max_dim:g}mm bed — expected for a {profile} model, split into segments before printing")
+                + (
+                    f"fits a {max_dim:g}mm bed"
+                    if fits_bed
+                    else f"exceeds a {max_dim:g}mm bed — expected for a {profile} model, split into segments before printing"
+                )
             ),
             weight=1.0,
             value={"dims": dims, "fits_bed": fits_bed, "max_print_dim_mm": max_dim},

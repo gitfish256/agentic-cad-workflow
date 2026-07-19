@@ -1,12 +1,17 @@
+import asyncio
 import json
 import math
 import sys
+import threading
+import time
 from pathlib import Path
 
 import pytest
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
+from agentic_cad_workflow import __version__
+from agentic_cad_workflow.server import _run_cad_sync
 
 RING_BRIM_CODE = """import cadquery as cq
 
@@ -14,6 +19,14 @@ RING_BRIM_CODE = """import cadquery as cq
 result = cq.Workplane("XY").circle(60).circle(45).extrude(12)
 show_object(result, name="ring_pet_bed_brim")
 """
+
+
+async def _wait_for_path(path: Path) -> None:
+    async def poll() -> None:
+        while not path.exists():
+            await asyncio.sleep(0.01)
+
+    await asyncio.wait_for(poll(), timeout=5.0)
 
 
 @pytest.mark.asyncio
@@ -34,6 +47,7 @@ async def test_stdio_agent_driven_build_inspect_and_render_end_to_end(tmp_path):
         async with ClientSession(read_stream, write_stream) as session:
             initialized = await session.initialize()
             assert initialized.instructions
+            assert initialized.serverInfo.version == __version__
             assert "host agent must interpret" in initialized.instructions.lower()
             assert len(initialized.instructions.encode("utf-8")) < 2048
 
@@ -90,9 +104,7 @@ async def test_stdio_agent_driven_build_inspect_and_render_end_to_end(tmp_path):
             inspection = json.loads(inspected.content[0].text)
             assert inspection["success"], inspection.get("error")
             assert inspection["validation"]["valid"], inspection["validation"]
-            assert inspection["properties"]["volume"] == pytest.approx(
-                props["volume"], rel=0.001
-            )
+            assert inspection["properties"]["volume"] == pytest.approx(props["volume"], rel=0.001)
 
             rendered = await session.call_tool(
                 "render_artifact",
@@ -141,6 +153,86 @@ async def test_stdio_business_failures_set_mcp_is_error(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_stdio_server_stays_responsive_during_cad_execution(tmp_path):
+    """A CAD request must not freeze unrelated MCP requests on the event loop."""
+    started = tmp_path / "worker-started"
+    release = tmp_path / "release-worker"
+    code = f"""import cadquery as cq
+import time
+from pathlib import Path
+
+started = Path({json.dumps(str(started))})
+release = Path({json.dumps(str(release))})
+started.write_text("ready", encoding="utf-8")
+while not release.exists():
+    time.sleep(0.01)
+result = cq.Workplane("XY").box(10, 10, 10).translate((0, 0, 5))
+show_object(result)
+"""
+    params = StdioServerParameters(
+        command=sys.executable,
+        args=["-m", "agentic_cad_workflow", "--output-dir", str(tmp_path)],
+    )
+
+    async with stdio_client(params) as (read_stream, write_stream):
+        async with ClientSession(read_stream, write_stream) as session:
+            await session.initialize()
+            build_task = asyncio.create_task(
+                session.call_tool(
+                    "inspect_cadquery",
+                    {"code": code, "execution_timeout": 5.0},
+                )
+            )
+            await _wait_for_path(started)
+
+            try:
+                # The worker waits for this test, so list_tools can only finish
+                # now if the server's asyncio loop is free to serve it.
+                listed = await asyncio.wait_for(session.list_tools(), timeout=2.0)
+            finally:
+                release.write_text("continue", encoding="utf-8")
+                built = await asyncio.wait_for(build_task, timeout=5.0)
+
+            assert {tool.name for tool in listed.tools} >= {
+                "execute_cadquery",
+                "inspect_cadquery",
+            }
+            assert not built.isError
+
+
+@pytest.mark.asyncio
+async def test_cad_executor_serializes_work_and_recovers_after_error():
+    active = 0
+    maximum_active = 0
+    lock = threading.Lock()
+
+    def work(value, *, fail=False):
+        nonlocal active, maximum_active
+        with lock:
+            active += 1
+            maximum_active = max(maximum_active, active)
+        try:
+            time.sleep(0.03)
+            if fail:
+                raise RuntimeError("expected worker failure")
+            return value
+        finally:
+            with lock:
+                active -= 1
+
+    results = await asyncio.gather(
+        _run_cad_sync(work, "first"),
+        _run_cad_sync(work, "second"),
+    )
+    assert results == ["first", "second"]
+    assert maximum_active == 1
+
+    with pytest.raises(RuntimeError, match="expected worker failure"):
+        await _run_cad_sync(work, "failure", fail=True)
+    assert await _run_cad_sync(work, "after failure") == "after failure"
+
+
+@pytest.mark.asyncio
 async def test_agent_refinement_is_a_second_explicit_build(tmp_path):
     first_code = (
         "import cadquery as cq\n"
@@ -148,9 +240,7 @@ async def test_agent_refinement_is_a_second_explicit_build(tmp_path):
         "show_object(result)\n"
     )
     revised_code = (
-        "import cadquery as cq\n"
-        "result = cq.Workplane('XY').box(20, 20, 10).translate((0, 0, 5))\n"
-        "show_object(result)\n"
+        "import cadquery as cq\nresult = cq.Workplane('XY').box(20, 20, 10).translate((0, 0, 5))\nshow_object(result)\n"
     )
     params = StdioServerParameters(command=sys.executable, args=["-m", "agentic_cad_workflow"])
 

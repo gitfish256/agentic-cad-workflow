@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 import cadquery as cq
 from cadquery import importers
@@ -11,16 +12,14 @@ from .runner import (
     PREVIEW_STYLES,
     VIEWS,
     ensure_output_dir,
+    export_preview_files,
     export_shape_files,
     new_run_id,
     properties_to_dict,
-    render_png,
-    render_svg,
     shape_properties,
     slugify,
 )
 from .validation import DEFAULT_MAX_PRINT_DIM_MM, validate_prompt_shape
-
 
 # Formats cadquery.importers.importShape can load. STL is intentionally absent:
 # CadQuery 2.x has no STL importer, so STL gets a structured error instead.
@@ -150,17 +149,17 @@ def render_artifact(
     # Keep preview names bounded for Windows path-length compatibility and
     # strip characters that are invalid in Windows filenames.
     base_name = slugify(path.stem, default="artifact")
-    previews: list[dict[str, str]] = []
-    for view in views:
-        svg_path = run_path / f"{base_name}-{view}.svg"
-        png_path = run_path / f"{base_name}-{view}.png"
-        render_svg(shape, svg_path, view=view)
-        render_png(shape, png_path, view=view, style=style)
-        previews.append({"view": view, "svg": str(svg_path), "png": str(png_path)})
+    artifacts = export_preview_files(
+        shape,
+        run_path,
+        base_name=base_name,
+        views=views,
+        style=style,
+    )
 
     payload["success"] = True
     payload["output_dir"] = str(run_path)
-    payload["artifacts"] = {"previews": previews}
+    payload["artifacts"] = artifacts
     payload.update(_props_and_validation(props, prompt, profile, max_print_dim_mm))
     return payload
 
@@ -295,13 +294,9 @@ def split_artifact(
 
                 # Recenter for printing: X/Y centered on the origin, base on Z=0.
                 pb = piece.BoundingBox()
-                piece = piece.translate(
-                    cq.Vector(-(pb.xmin + pb.xmax) / 2, -(pb.ymin + pb.ymax) / 2, -pb.zmin)
-                )
+                piece = piece.translate(cq.Vector(-(pb.xmin + pb.xmax) / 2, -(pb.ymin + pb.ymax) / 2, -pb.zmin))
                 index = len(segments)
-                artifacts = export_shape_files(
-                    piece, run_path, base_name=f"segment-{index:02d}", views=("isometric",)
-                )
+                artifacts = export_shape_files(piece, run_path, base_name=f"segment-{index:02d}", views=("isometric",))
                 props = shape_properties(piece)
                 validation = validate_prompt_shape(
                     "printable split segment", props, profile="printable", max_print_dim_mm=bed

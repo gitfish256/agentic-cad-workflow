@@ -45,9 +45,7 @@ def _result_payload(
     return data
 
 
-def _publish_staged_artifacts(
-    artifacts: dict[str, Any], staging_dir: Path, run_path: Path
-) -> dict[str, Any]:
+def _publish_staged_artifacts(artifacts: dict[str, Any], staging_dir: Path, run_path: Path) -> dict[str, Any]:
     """Publish a complete export set and rewrite paths to the run directory.
 
     Exporters write into a private staging directory first.  If rendering or a
@@ -102,7 +100,7 @@ def _publish_staged_artifacts(
     return rewrite(artifacts)
 
 
-async def _execute_validate_and_export(
+def _execute_validate_and_export(
     code: str,
     prompt: str,
     output_dir: str | Path,
@@ -163,13 +161,11 @@ async def _execute_validate_and_export(
         artifacts,
         validation,
     )
-    payload.setdefault("artifacts", {}).update(
-        write_run_files(run_path, prompt, code, payload)
-    )
+    payload.setdefault("artifacts", {}).update(write_run_files(run_path, prompt, code, payload))
     return payload
 
 
-async def build_model_from_code(
+def build_model_from_code(
     code: str,
     prompt: str = "agent-authored CadQuery model",
     output_dir: str | Path = "outputs",
@@ -184,7 +180,7 @@ async def build_model_from_code(
     Natural-language interpretation and code refinement belong to the host agent.
     This function is intentionally deterministic and never calls an LLM.
     """
-    return await _execute_validate_and_export(
+    return _execute_validate_and_export(
         code,
         prompt,
         output_dir,
@@ -197,7 +193,7 @@ async def build_model_from_code(
     )
 
 
-async def render_preview_from_code(
+def render_preview_from_code(
     code: str,
     prompt: str = "agent-authored CadQuery model preview",
     output_dir: str | Path = "outputs",
@@ -208,7 +204,7 @@ async def render_preview_from_code(
     execution_timeout: float = DEFAULT_EXECUTION_TIMEOUT_SECONDS,
 ) -> dict[str, Any]:
     """Execute and validate agent-authored code, exporting previews only."""
-    return await _execute_validate_and_export(
+    return _execute_validate_and_export(
         code,
         prompt,
         output_dir,

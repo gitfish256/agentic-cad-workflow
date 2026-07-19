@@ -5,13 +5,12 @@ from __future__ import annotations
 import contextlib
 import io
 import json
-from pathlib import Path
 import sys
+from pathlib import Path
 
 from cadquery import exporters
 
 from .runner import _execute_cadquery_in_process
-
 
 MAX_DIAGNOSTIC_CHARS = 64 * 1024
 

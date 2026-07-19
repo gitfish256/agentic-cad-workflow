@@ -10,9 +10,10 @@ import sys
 import tempfile
 import traceback
 import uuid
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 # CAD/preview dependencies normally cache under the user's home directory. Some
 # agent sandboxes intentionally make that location read-only, which produces
@@ -41,7 +42,6 @@ if os.name == "nt" and not os.environ.get("WINDIR"):
 
 import cadquery as cq
 from cadquery import cqgi, exporters, importers
-
 
 VIEWS: dict[str, tuple[float, float, float]] = {
     # Camera/projection directions shared by SVG (projectionDir) and PNG rendering.

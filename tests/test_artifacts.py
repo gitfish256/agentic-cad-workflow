@@ -1,19 +1,21 @@
-import json
 import inspect
+import json
 from pathlib import Path
 
 import cadquery as cq
 import pytest
 from cadquery import exporters
 
+import agentic_cad_workflow.artifacts as artifacts_module
 from agentic_cad_workflow.artifacts import inspect_artifact, make_radial_assembly, render_artifact
 from agentic_cad_workflow.generator import build_model_from_code
 from agentic_cad_workflow.runner import CadExecution, ShapeProperties
 from agentic_cad_workflow.server import call_tool
 from agentic_cad_workflow.validation import validate_prompt_shape
 
-
-BOX_CODE = "import cadquery as cq\nresult = cq.Workplane('XY').box(20, 20, 10).translate((0, 0, 5))\nshow_object(result)\n"
+BOX_CODE = (
+    "import cadquery as cq\nresult = cq.Workplane('XY').box(20, 20, 10).translate((0, 0, 5))\nshow_object(result)\n"
+)
 
 
 def _tool_payload(result):
@@ -25,14 +27,7 @@ def _tool_payload(result):
 def wedge_files(tmp_path_factory):
     """Small door-stopper-like wedge exported as STEP/BREP/STL."""
     base = tmp_path_factory.mktemp("wedge-artifacts")
-    shape = (
-        cq.Workplane("XZ")
-        .polyline([(0, 0), (60, 0), (60, 20)])
-        .close()
-        .extrude(25)
-        .translate((0, 12.5, 0))
-        .val()
-    )
+    shape = cq.Workplane("XZ").polyline([(0, 0), (60, 0), (60, 20)]).close().extrude(25).translate((0, 12.5, 0)).val()
     paths = {}
     for ext, export_type in [("step", "STEP"), ("brep", "BREP"), ("stl", "STL")]:
         path = base / f"wedge.{ext}"
@@ -99,6 +94,48 @@ def test_render_artifact_shaded_style(wedge_files, tmp_path):
     assert png.stat().st_size > 0
 
 
+def test_render_artifact_reuses_preview_export_and_measures_first(wedge_files, tmp_path, monkeypatch):
+    events = []
+    captured = {}
+    original_shape_properties = artifacts_module.shape_properties
+
+    def tracking_shape_properties(shape):
+        events.append("measure")
+        return original_shape_properties(shape)
+
+    def fake_export_preview_files(shape, output_dir, **kwargs):
+        events.append("render")
+        captured.update(output_dir=output_dir, **kwargs)
+        return {
+            "previews": [
+                {
+                    "view": "isometric",
+                    "svg": str(Path(output_dir) / "wedge-isometric.svg"),
+                    "png": str(Path(output_dir) / "wedge-isometric.png"),
+                }
+            ]
+        }
+
+    monkeypatch.setattr(artifacts_module, "shape_properties", tracking_shape_properties)
+    monkeypatch.setattr(artifacts_module, "export_preview_files", fake_export_preview_files)
+
+    payload = render_artifact(
+        wedge_files["step"],
+        output_dir=tmp_path,
+        views=["isometric"],
+        run_id="preview-reuse",
+        style="shaded",
+    )
+
+    assert payload["success"], payload.get("error")
+    assert events == ["measure", "render"]
+    assert captured["output_dir"] == tmp_path / "preview-reuse"
+    assert captured["base_name"] == "wedge"
+    assert captured["views"] == ("isometric",)
+    assert captured["style"] == "shaded"
+    assert payload["artifacts"]["previews"][0]["view"] == "isometric"
+
+
 def test_render_artifact_unknown_style(wedge_files, tmp_path):
     payload = render_artifact(wedge_files["step"], output_dir=tmp_path, style="wireframe")
     assert not payload["success"]
@@ -124,8 +161,15 @@ def test_make_radial_assembly_compound(wedge_files, tmp_path):
 def _oversize_ring_props():
     return ShapeProperties(
         bounding_box={
-            "xmin": -199.5, "xmax": 199.5, "ymin": -199.5, "ymax": 199.5,
-            "zmin": 0.0, "zmax": 38.0, "xlen": 399.0, "ylen": 399.0, "zlen": 38.0,
+            "xmin": -199.5,
+            "xmax": 199.5,
+            "ymin": -199.5,
+            "ymax": 199.5,
+            "zmin": 0.0,
+            "zmax": 38.0,
+            "xlen": 399.0,
+            "ylen": 399.0,
+            "zlen": 38.0,
         },
         volume=581989.19,
         area=1.0,
@@ -227,14 +271,13 @@ def test_validation_profile_unknown_raises():
         validate_prompt_shape("x", _oversize_ring_props(), profile="huge")
 
 
-@pytest.mark.asyncio
-async def test_multiple_independent_show_objects_fail_explicitly(tmp_path):
+def test_multiple_independent_show_objects_fail_explicitly(tmp_path):
     code = (
         "import cadquery as cq\n"
         "show_object(cq.Workplane('XY').box(10, 10, 10).translate((0, 0, 5)), name='a')\n"
         "show_object(cq.Workplane('XY').box(5, 5, 5).translate((30, 0, 2.5)), name='b')\n"
     )
-    result = await build_model_from_code(code, output_dir=tmp_path)
+    result = build_model_from_code(code, output_dir=tmp_path)
     assert not result["success"]
     assert "2 separate final results" in result["error"]
     assert "stl" not in result["artifacts"]
@@ -242,8 +285,7 @@ async def test_multiple_independent_show_objects_fail_explicitly(tmp_path):
     assert "brep" not in result["artifacts"]
 
 
-@pytest.mark.asyncio
-async def test_multi_object_workplane_preserves_every_solid(tmp_path):
+def test_multi_object_workplane_preserves_every_solid(tmp_path):
     code = (
         "import cadquery as cq\n"
         "a = cq.Workplane('XY').box(10, 10, 10).translate((0, 0, 5)).val()\n"
@@ -252,7 +294,7 @@ async def test_multi_object_workplane_preserves_every_solid(tmp_path):
         "show_object(result, name='two_boxes')\n"
     )
 
-    result = await build_model_from_code(code, output_dir=tmp_path)
+    result = build_model_from_code(code, output_dir=tmp_path)
 
     assert result["success"], result.get("error")
     props = result["properties"][0]
@@ -265,8 +307,7 @@ async def test_multi_object_workplane_preserves_every_solid(tmp_path):
     assert inspected["properties"]["volume"] == pytest.approx(2000.0, rel=1e-6)
 
 
-@pytest.mark.asyncio
-async def test_build_default_uses_a_nonzero_worker_timeout(tmp_path, monkeypatch):
+def test_build_default_uses_a_nonzero_worker_timeout(tmp_path, monkeypatch):
     captured = {}
 
     def fake_execute(code, timeout_seconds=None):
@@ -275,7 +316,7 @@ async def test_build_default_uses_a_nonzero_worker_timeout(tmp_path, monkeypatch
 
     monkeypatch.setattr("agentic_cad_workflow.generator.execute_cadquery", fake_execute)
 
-    result = await build_model_from_code(BOX_CODE, output_dir=tmp_path)
+    result = build_model_from_code(BOX_CODE, output_dir=tmp_path)
 
     default = inspect.signature(build_model_from_code).parameters["execution_timeout"].default
     assert default is not None
@@ -300,7 +341,12 @@ async def test_call_tool_inspect_artifact(wedge_files):
 async def test_call_tool_render_artifact_no_images(wedge_files, tmp_path):
     result = await call_tool(
         "render_artifact",
-        {"path": str(wedge_files["step"]), "output_dir": str(tmp_path), "views": ["isometric"], "include_images": False},
+        {
+            "path": str(wedge_files["step"]),
+            "output_dir": str(tmp_path),
+            "views": ["isometric"],
+            "include_images": False,
+        },
     )
     assert not result.isError
     assert len(result.content) == 1
@@ -411,7 +457,13 @@ async def test_call_tool_execute_cadquery_reference_profile(tmp_path):
     )
     result = await call_tool(
         "execute_cadquery",
-        {"code": code, "output_dir": str(tmp_path), "include_images": False, "validation_profile": "reference", "verbosity": "summary"},
+        {
+            "code": code,
+            "output_dir": str(tmp_path),
+            "include_images": False,
+            "validation_profile": "reference",
+            "verbosity": "summary",
+        },
     )
     assert not result.isError
     payload = _tool_payload(result)

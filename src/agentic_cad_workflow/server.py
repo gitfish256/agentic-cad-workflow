@@ -3,13 +3,17 @@ from __future__ import annotations
 import argparse
 import asyncio
 import math
+from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
+from functools import partial
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import CallToolResult, ImageContent, TextContent, Tool
 
+from . import __version__
 from .artifacts import inspect_artifact, make_radial_assembly, render_artifact, split_artifact
 from .generator import build_model_from_code, render_preview_from_code, result_to_json_text
 from .runner import (
@@ -21,19 +25,33 @@ from .runner import (
 )
 from .validation import VALIDATION_PROFILES, validate_prompt_shape
 
-
 SERVER_INSTRUCTIONS = """The host agent must interpret the user's prompt and write or revise the CadQuery code itself. Use millimeters, import cadquery as cq, assign the final single Shape/Workplane/Assembly to result, call show_object(result, name=...), and place printable geometry on or above Z=0. Prefer one execute_cadquery call with the original prompt, the correct validation_profile and bed_size, and style=shaded; it executes, exports STL/STEP/BREP plus previews, measures geometry, and validates it. Compare measured dimensions and previews with the prompt. If they do not conform, revise the code and call execute_cadquery again. Use inspect_artifact/render_artifact for saved STEP/BREP files and split_artifact only when the user requests splitting. Validation is geometry_heuristic only: it does not prove prompt conformance, local wall thickness, clearances, overhangs, material strength, or slicer compatibility. Generated Python runs locally with the current user's filesystem and network permissions despite process isolation and a timeout."""
 
 
 server = Server(
     "agentic-cad-workflow",
-    version="0.5.0",
+    version=__version__,
     instructions=SERVER_INSTRUCTIONS,
 )
 DEFAULT_OUTPUT_DIR = str(Path.cwd() / "outputs")
 # Server-wide printer bed size (mm), set with --bed-size; per-call bed_size overrides it.
 DEFAULT_BED_SIZE: float | None = None
 DEFAULT_EXECUTION_TIMEOUT = DEFAULT_EXECUTION_TIMEOUT_SECONDS
+
+# CadQuery/OpenCASCADE and matplotlib are synchronous and are not assumed to be
+# thread-safe.  Keep every CAD operation on one worker thread: the asyncio loop
+# remains responsive to MCP lifecycle and discovery requests, while two model
+# operations can never enter OCC or rendering code concurrently.
+_CAD_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="agentic-cad")
+_T = TypeVar("_T")
+
+
+async def _run_cad_sync(function: Callable[..., _T], /, *args: Any, **kwargs: Any) -> _T:
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(
+        _CAD_EXECUTOR,
+        partial(function, *args, **kwargs),
+    )
 
 
 def _schema(properties: dict[str, Any], required: list[str] | None = None) -> dict[str, Any]:
@@ -95,8 +113,14 @@ async def list_tools() -> list[Tool]:
             ),
             inputSchema=_schema(
                 {
-                    "code": {"type": "string", "description": "Agent-authored CadQuery code. Assign the final model to result and call show_object(result)."},
-                    "prompt": {"type": "string", "description": "Original user prompt/physical intent used when assessing the returned geometry."},
+                    "code": {
+                        "type": "string",
+                        "description": "Agent-authored CadQuery code. Assign the final model to result and call show_object(result).",
+                    },
+                    "prompt": {
+                        "type": "string",
+                        "description": "Original user prompt/physical intent used when assessing the returned geometry.",
+                    },
                     "output_dir": {"type": "string", "description": "Directory for generated artifacts."},
                     "include_images": {"type": "boolean", "default": True},
                     **EXECUTION_OPTIONS,
@@ -113,7 +137,10 @@ async def list_tools() -> list[Tool]:
             inputSchema=_schema(
                 {
                     "code": {"type": "string"},
-                    "prompt": {"type": "string", "description": "Original user prompt/physical intent used for validation."},
+                    "prompt": {
+                        "type": "string",
+                        "description": "Original user prompt/physical intent used for validation.",
+                    },
                     "output_dir": {"type": "string"},
                     "include_images": {"type": "boolean", "default": True},
                     **EXECUTION_OPTIONS,
@@ -186,11 +213,23 @@ async def list_tools() -> list[Tool]:
                 {
                     "source_path": {"type": "string", "description": "Path to the segment artifact."},
                     "count": {"type": "integer", "default": 4, "minimum": 1},
-                    "angle_step": {"type": "number", "default": 90.0, "description": "Rotation between copies in degrees."},
+                    "angle_step": {
+                        "type": "number",
+                        "default": 90.0,
+                        "description": "Rotation between copies in degrees.",
+                    },
                     "output_dir": {"type": "string"},
-                    "boolean_fuse": {"type": "boolean", "default": False, "description": "Fuse copies into one solid instead of a compound."},
+                    "boolean_fuse": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "Fuse copies into one solid instead of a compound.",
+                    },
                     "include_images": {"type": "boolean", "default": True},
-                    "bed_size": {"type": "number", "exclusiveMinimum": 0, "description": "Max print dimension in mm for the advisory (default 300)."},
+                    "bed_size": {
+                        "type": "number",
+                        "exclusiveMinimum": 0,
+                        "description": "Max print dimension in mm for the advisory (default 300).",
+                    },
                 },
                 ["source_path"],
             ),
@@ -206,7 +245,11 @@ async def list_tools() -> list[Tool]:
             inputSchema=_schema(
                 {
                     "source_path": {"type": "string", "description": "Path to the oversize artifact."},
-                    "bed_size": {"type": "number", "exclusiveMinimum": 0, "description": "Max print dimension in mm (default: server --bed-size, else 300)."},
+                    "bed_size": {
+                        "type": "number",
+                        "exclusiveMinimum": 0,
+                        "description": "Max print dimension in mm (default: server --bed-size, else 300).",
+                    },
                     "output_dir": {"type": "string"},
                     "include_images": {"type": "boolean", "default": True},
                 },
@@ -306,6 +349,24 @@ def _call_result(result: dict[str, Any], include_images: bool = True) -> CallToo
     )
 
 
+def _inspect_cadquery(arguments: dict[str, Any]) -> dict[str, Any]:
+    """Execute, measure, and validate code entirely on the serial CAD worker."""
+    execution = execute_cadquery(arguments["code"], timeout_seconds=_execution_timeout(arguments))
+    payload: dict[str, Any] = {
+        "success": execution.success,
+        "error": execution.error,
+        "build_time": execution.build_time,
+        "properties": [properties_to_dict(p) for p in execution.properties],
+    }
+    if execution.success:
+        payload["validation"] = validate_prompt_shape(
+            arguments.get("prompt", "manual CadQuery execution"),
+            execution.properties[0],
+            **_validation_kwargs(arguments),
+        ).to_dict()
+    return payload
+
+
 @server.call_tool()
 async def call_tool(name: str, arguments: dict[str, Any]) -> CallToolResult:
     arguments = arguments or {}
@@ -313,7 +374,8 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> CallToolResult:
 
     try:
         if name == "execute_cadquery":
-            result = await build_model_from_code(
+            result = await _run_cad_sync(
+                build_model_from_code,
                 code=arguments["code"],
                 prompt=arguments.get("prompt", "manual CadQuery execution"),
                 output_dir=_output_dir(arguments),
@@ -324,7 +386,8 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> CallToolResult:
             return _call_result(_shrink_result(result, arguments), include_images=include_images)
 
         if name == "render_preview":
-            result = await render_preview_from_code(
+            result = await _run_cad_sync(
+                render_preview_from_code,
                 code=arguments["code"],
                 prompt=arguments.get("prompt", "manual CadQuery preview"),
                 output_dir=_output_dir(arguments),
@@ -335,25 +398,12 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> CallToolResult:
             return _call_result(_shrink_result(result, arguments), include_images=include_images)
 
         if name == "inspect_cadquery":
-            execution = execute_cadquery(
-                arguments["code"], timeout_seconds=_execution_timeout(arguments)
-            )
-            payload: dict[str, Any] = {
-                "success": execution.success,
-                "error": execution.error,
-                "build_time": execution.build_time,
-                "properties": [properties_to_dict(p) for p in execution.properties],
-            }
-            if execution.success:
-                payload["validation"] = validate_prompt_shape(
-                    arguments.get("prompt", "manual CadQuery execution"),
-                    execution.properties[0],
-                    **_validation_kwargs(arguments),
-                ).to_dict()
+            payload = await _run_cad_sync(_inspect_cadquery, arguments)
             return _call_result(payload, include_images=False)
 
         if name == "inspect_artifact":
-            payload = inspect_artifact(
+            payload = await _run_cad_sync(
+                inspect_artifact,
                 arguments["path"],
                 prompt=arguments.get("prompt", "artifact inspection"),
                 **_validation_kwargs(arguments),
@@ -361,7 +411,8 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> CallToolResult:
             return _call_result(payload, include_images=False)
 
         if name == "render_artifact":
-            result = render_artifact(
+            result = await _run_cad_sync(
+                render_artifact,
                 arguments["path"],
                 output_dir=_output_dir(arguments),
                 views=arguments.get("views"),
@@ -372,7 +423,8 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> CallToolResult:
             return _call_result(result, include_images=include_images)
 
         if name == "make_radial_assembly":
-            result = make_radial_assembly(
+            result = await _run_cad_sync(
+                make_radial_assembly,
                 arguments["source_path"],
                 count=int(arguments.get("count", 4)),
                 angle_step=float(arguments.get("angle_step", 90.0)),
@@ -383,7 +435,8 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> CallToolResult:
             return _call_result(result, include_images=include_images)
 
         if name == "split_artifact":
-            result = split_artifact(
+            result = await _run_cad_sync(
+                split_artifact,
                 arguments["source_path"],
                 bed_size=_bed_size(arguments),
                 output_dir=_output_dir(arguments),
@@ -427,9 +480,7 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
     if not math.isfinite(args.execution_timeout) or args.execution_timeout <= 0:
         parser.error("--execution-timeout must be a finite number > 0")
-    if args.bed_size is not None and (
-        not math.isfinite(args.bed_size) or args.bed_size <= 0
-    ):
+    if args.bed_size is not None and (not math.isfinite(args.bed_size) or args.bed_size <= 0):
         parser.error("--bed-size must be a finite number > 0")
     asyncio.run(_run_stdio(args.output_dir, args.bed_size, args.execution_timeout))
 
