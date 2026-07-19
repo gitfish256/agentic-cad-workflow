@@ -123,7 +123,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libgl1
 
       - name: Download distributions built by the package job
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: python-distributions
           path: dist
