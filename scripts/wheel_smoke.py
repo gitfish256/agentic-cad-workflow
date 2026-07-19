@@ -17,15 +17,13 @@ from __future__ import annotations
 import argparse
 import json
 import os
-from pathlib import Path
 import subprocess
-import sys
 import tarfile
 import tempfile
 import textwrap
 import venv
 import zipfile
-
+from pathlib import Path
 
 RING_CODE = """import cadquery as cq
 result = cq.Workplane("XY").circle(60).circle(45).extrude(12)
@@ -35,11 +33,14 @@ show_object(result, name="wheel_smoke_ring")
 MCP_SMOKE = r'''
 import asyncio
 import json
+from importlib.metadata import version
 from pathlib import Path
 import sys
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
+
+from agentic_cad_workflow import __version__
 
 RING_CODE = """import cadquery as cq
 result = cq.Workplane("XY").circle(60).circle(45).extrude(12)
@@ -57,6 +58,8 @@ async def main():
         async with ClientSession(read_stream, write_stream) as session:
             initialized = await session.initialize()
             assert initialized.instructions
+            assert initialized.serverInfo.version == __version__
+            assert initialized.serverInfo.version == version("agentic-cad-workflow")
             tools = await session.list_tools()
             assert {tool.name for tool in tools.tools} == {
                 "execute_cadquery",
@@ -163,6 +166,7 @@ def _check_sdist_policy(sdist: Path) -> None:
 
     required_suffixes = {
         "/agent-workflows/agentic-cad-workflow.md",
+        "/CHANGELOG.md",
         "/CONTRIBUTING.md",
         "/scripts/wheel_smoke.py",
     }
@@ -179,7 +183,7 @@ def _check_sdist_policy(sdist: Path) -> None:
             leaked.append(name)
         elif "worklog.md" in lowered:
             leaked.append(name)
-        elif any(part == ".env" or part.startswith(".env.") for part in parts):
+        elif any(part == ".env" or part.startswith(".env.") for part in lowered):
             leaked.append(name)
     if leaked:
         raise RuntimeError(f"Sdist contains private/local files: {leaked}")
@@ -220,7 +224,7 @@ def main(argv: list[str] | None = None) -> int:
         python = _venv_python(environment)
 
         _run([str(python), "-m", "pip", "install", "--upgrade", "pip"], cwd=root)
-        _run([str(python), "-m", "pip", "install", "--no-cache-dir", str(wheel)], cwd=root)
+        _run([str(python), "-m", "pip", "install", str(wheel)], cwd=root)
         _run([str(python), "-m", "pip", "check"], cwd=root)
 
         model = root / "ring.py"
@@ -247,6 +251,13 @@ def main(argv: list[str] | None = None) -> int:
             cwd=root,
         )
         _check_cli_payload(json.loads(built.stdout))
+
+        printed_workflow = _run([str(cli), "--print-workflow"], cwd=root)
+        canonical_workflow = (repository_root / "agent-workflows" / "agentic-cad-workflow.md").read_text(
+            encoding="utf-8"
+        )
+        if printed_workflow.stdout != canonical_workflow:
+            raise RuntimeError("Installed CLI workflow output differs from the canonical repository file")
 
         helper = root / "mcp_smoke.py"
         helper.write_text(textwrap.dedent(MCP_SMOKE), encoding="utf-8")

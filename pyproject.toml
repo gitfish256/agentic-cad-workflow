@@ -4,10 +4,10 @@ build-backend = "hatchling.build"
 
 [project]
 name = "agentic-cad-workflow"
-version = "0.5.0"
+dynamic = ["version"]
 description = "Local agentic CAD workflow: an MCP server, CLI, and portable agent guide for prompt-driven CadQuery generation, rendering, inspection, and refinement."
 readme = "README.md"
-requires-python = ">=3.10,<3.13"
+requires-python = ">=3.10,<3.15"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [{ name = "agentic-cad-workflow contributors" }]
@@ -23,6 +23,8 @@ classifiers = [
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
   "Topic :: Multimedia :: Graphics :: 3D Modeling",
 ]
 # matplotlib (Agg) renders PNG previews headless with pure pip wheels on
@@ -35,12 +37,19 @@ dependencies = [
   "numpy>=1.25,<3",
 ]
 
+[project.urls]
+Homepage = "https://github.com/gitfish256/agentic-cad-workflow"
+Repository = "https://github.com/gitfish256/agentic-cad-workflow"
+Issues = "https://github.com/gitfish256/agentic-cad-workflow/issues"
+Security = "https://github.com/gitfish256/agentic-cad-workflow/security/policy"
+
 [project.optional-dependencies]
 dev = [
   "pytest>=8",
   "pytest-asyncio>=0.23",
   "build>=1.2",
   "twine>=6",
+  "ruff>=0.8,<1",
 ]
 
 [project.scripts]
@@ -51,6 +60,21 @@ agentic-cad-install-hermes-skill = "agentic_cad_workflow.install_skill:main"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+"examples/*.py" = ["F821"]
+"src/agentic_cad_workflow/runner.py" = ["E402"]
+
+[tool.hatch.version]
+path = "src/agentic_cad_workflow/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/agentic_cad_workflow"]
@@ -75,6 +99,7 @@ include = [
   "/tests",
   "/.gitignore",
   "/AGENTS.md",
+  "/CHANGELOG.md",
   "/CLAUDE.md",
   "/CONTRIBUTING.md",
   "/LICENSE",

@@ -8,14 +8,49 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install Ruff
+        run: python -m pip install "ruff>=0.8,<1"
+
+      - name: Check lint and formatting
+        run: |
+          python -m ruff check .
+          python -m ruff format --check .
+
   pytest:
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-        python-version: ["3.10", "3.11", "3.12"]
+        include:
+          # Test every supported Python on Linux, plus the oldest, midpoint,
+          # and newest versions on Windows/macOS to control CI cost.
+          - { os: ubuntu-latest, python-version: "3.10" }
+          - { os: ubuntu-latest, python-version: "3.11" }
+          - { os: ubuntu-latest, python-version: "3.12" }
+          - { os: ubuntu-latest, python-version: "3.13" }
+          - { os: ubuntu-latest, python-version: "3.14" }
+          - { os: windows-latest, python-version: "3.10" }
+          - { os: windows-latest, python-version: "3.12" }
+          - { os: windows-latest, python-version: "3.14" }
+          - { os: macos-latest, python-version: "3.10" }
+          - { os: macos-latest, python-version: "3.12" }
+          - { os: macos-latest, python-version: "3.14" }
     steps:
       - uses: actions/checkout@v4
 
@@ -23,6 +58,8 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
 
       # CadQuery pulls in OCP/OpenCASCADE; libGL is needed for headless use on Linux.
       - name: Install system libraries
@@ -38,7 +75,7 @@ jobs:
         run: pytest -q
 
   package:
-    needs: pytest
+    needs: [lint, pytest]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -46,6 +83,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
 
       - name: Build and check distributions
         run: |
@@ -61,7 +100,8 @@ jobs:
           path: dist/*
           if-no-files-found: error
 
-  wheel-smoke:
+  wheel_smoke:
+    name: wheel-smoke (${{ matrix.os }})
     needs: package
     runs-on: ${{ matrix.os }}
     strategy:
@@ -73,7 +113,9 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: pyproject.toml
 
       # CadQuery pulls in OCP/OpenCASCADE; libGL is needed for headless use on Linux.
       - name: Install system libraries
@@ -88,3 +130,19 @@ jobs:
 
       - name: Run clean-wheel CLI and MCP smoke tests
         run: python scripts/wheel_smoke.py --dist-dir dist
+
+  required-checks:
+    if: always()
+    needs: [lint, pytest, package, wheel_smoke]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify required jobs
+        env:
+          LINT_RESULT: ${{ needs.lint.result }}
+          PYTEST_RESULT: ${{ needs.pytest.result }}
+          PACKAGE_RESULT: ${{ needs.package.result }}
+          WHEEL_SMOKE_RESULT: ${{ needs.wheel_smoke.result }}
+        run: |
+          for result in "$LINT_RESULT" "$PYTEST_RESULT" "$PACKAGE_RESULT" "$WHEEL_SMOKE_RESULT"; do
+            test "$result" = "success"
+          done
