@@ -119,12 +119,7 @@ def _execute_validate_and_export(
     # would silently discard geometry, while automatically combining unrelated
     # debug objects could also create the wrong printable model.  A Workplane
     # containing multiple final solids is normalized to one Compound by runner.
-    if execution.success and len(execution.shapes) != 1:
-        execution.success = False
-        execution.error = (
-            f"CadQuery code produced {len(execution.shapes)} separate final results. "
-            "Assign and show one final Shape, Workplane, Assembly, or Compound."
-        )
+    execution.require_single_result()
 
     validation = (
         validate_prompt_shape(

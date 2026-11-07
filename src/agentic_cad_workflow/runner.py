@@ -78,6 +78,15 @@ class CadExecution:
     error: str | None = None
     build_time: float | None = None
 
+    def require_single_result(self) -> None:
+        """Reject ambiguous final results while preserving execution errors."""
+        if self.success and len(self.shapes) != 1:
+            self.success = False
+            self.error = (
+                f"CadQuery code produced {len(self.shapes)} separate final results. "
+                "Assign and show one final Shape, Workplane, Assembly, or Compound."
+            )
+
 
 def slugify(text: str, default: str = "model") -> str:
     slug = re.sub(r"[^A-Za-z0-9_.-]+", "-", text).strip("-._").lower()

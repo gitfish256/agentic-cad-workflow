@@ -142,6 +142,40 @@ async def test_stdio_business_failures_set_mcp_is_error(tmp_path):
             assert not invalid_payload["success"]
             assert invalid_payload["error"]
 
+            multiple_results = await session.call_tool(
+                "inspect_cadquery",
+                {
+                    "code": (
+                        "import cadquery as cq\n"
+                        "show_object(cq.Workplane('XY').box(10, 10, 10, centered=(True, True, False)))\n"
+                        "show_object(cq.Workplane('XY').box(1000, 10, 10))\n"
+                    ),
+                    "bed_size": 300,
+                },
+            )
+            assert multiple_results.isError
+            multiple_payload = json.loads(multiple_results.content[0].text)
+            assert not multiple_payload["success"]
+            assert "2 separate final results" in multiple_payload["error"]
+            assert len(multiple_payload["properties"]) == 2
+            assert "validation" not in multiple_payload
+
+            compound_result = await session.call_tool(
+                "inspect_cadquery",
+                {
+                    "code": (
+                        "import cadquery as cq\n"
+                        "a = cq.Workplane('XY').box(10, 10, 10, centered=(True, True, False)).val()\n"
+                        "result = cq.Workplane('XY').newObject([a, a.translate((20, 0, 0))])\n"
+                        "show_object(result)\n"
+                    ),
+                },
+            )
+            assert not compound_result.isError
+            compound_payload = json.loads(compound_result.content[0].text)
+            assert compound_payload["validation"]["valid"]
+            assert compound_payload["properties"][0]["topology"]["solids"] == 2
+
             missing_artifact = await session.call_tool(
                 "inspect_artifact",
                 {"path": str(tmp_path / "missing.step")},

@@ -19,6 +19,17 @@ sponsored by, or endorsed by the CadQuery project.
 
 ![Shaded preview of the included ring-brim example](docs/images/ring-brim-isometric.png)
 
+## Project status and forks
+
+This is a personal experimental project shared under the MIT license so others
+can explore the idea and build on it. Forks, modifications, and independent
+releases are welcome. Please develop and publish improvements in your own fork.
+
+Updates to this repository are made at the author's discretion. Maintenance and
+security responses are best-effort, with no guaranteed schedule. Upstream pull
+requests are disabled. See [CONTRIBUTING.md](CONTRIBUTING.md) for fork development
+guidance.
+
 ## Architecture
 
 ```text
@@ -95,7 +106,7 @@ ignored by git.
 
 ## Development installation
 
-Contributors should use an editable install with the test and release tools:
+For development in your own fork, use an editable install with the test and release tools:
 
 ```powershell
 # Windows PowerShell
@@ -107,8 +118,8 @@ Contributors should use an editable install with the test and release tools:
 ./.venv/bin/python -m pip install -e ".[dev]"
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for repository checks and contribution
-boundaries.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for repository checks and fork development
+guidance.
 
 ## Codex setup and use
 

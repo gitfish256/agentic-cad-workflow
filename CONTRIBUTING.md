@@ -1,6 +1,14 @@
-# Contributing
+# Developing your own fork
 
-Thanks for helping improve `agentic-cad-workflow`.
+This repository shares a personal experiment in agentic CAD workflows. Forks,
+modifications, and independent releases are welcome under the MIT license.
+Please develop and publish improvements in your own fork, retaining the
+copyright and license notice as required by `LICENSE`.
+
+Upstream pull requests are disabled. Updates to this repository are made at the
+author's discretion. Maintenance, issue responses, and security responses are
+best-effort, with no guaranteed schedule. The guidance below supports independent
+development and testing.
 
 ## Before changing CAD workflow behavior
 

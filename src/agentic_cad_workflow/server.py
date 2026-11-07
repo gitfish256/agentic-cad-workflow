@@ -352,6 +352,7 @@ def _call_result(result: dict[str, Any], include_images: bool = True) -> CallToo
 def _inspect_cadquery(arguments: dict[str, Any]) -> dict[str, Any]:
     """Execute, measure, and validate code entirely on the serial CAD worker."""
     execution = execute_cadquery(arguments["code"], timeout_seconds=_execution_timeout(arguments))
+    execution.require_single_result()
     payload: dict[str, Any] = {
         "success": execution.success,
         "error": execution.error,

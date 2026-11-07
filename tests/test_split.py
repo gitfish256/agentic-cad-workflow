@@ -53,6 +53,33 @@ def test_split_artifact_fits_bed(tmp_path):
     assert "segments" not in payload
 
 
+@pytest.mark.asyncio
+async def test_split_curved_segments_validate_exact_geometry(tmp_path):
+    source = tmp_path / "ring.step"
+    ring = cq.Workplane("XY").circle(60).circle(45).extrude(12).val()
+    exporters.export(ring, str(source), exportType="STEP")
+
+    result = await call_tool(
+        "split_artifact",
+        {"source_path": str(source), "bed_size": 70, "output_dir": str(tmp_path), "include_images": False},
+    )
+    assert not result.isError
+    payload = _tool_payload(result)
+    assert payload["success"], payload.get("error")
+    assert payload["segments_total"] == 4
+    assert payload["all_segments_valid"], payload["segments"]
+    assert sum(segment["properties"]["volume"] for segment in payload["segments"]) == pytest.approx(ring.Volume())
+    for segment in payload["segments"]:
+        bbox = segment["properties"]["bounding_box"]
+        assert bbox["zmin"] == pytest.approx(0, abs=1e-5)
+        assert bbox["xlen"] == pytest.approx(60, abs=1e-5)
+        assert bbox["ylen"] == pytest.approx(60, abs=1e-5)
+        assert bbox["zlen"] == pytest.approx(12, abs=1e-5)
+        assert segment["validation"]["valid"]
+        for key in ("stl", "step", "brep"):
+            assert Path(segment["artifacts"][key]).stat().st_size > 0
+
+
 def test_split_artifact_custom_bed_size(tmp_path):
     source = _export_box(tmp_path / "plate.step", 250, 150, 10)
     payload = split_artifact(source, bed_size=100, output_dir=tmp_path)

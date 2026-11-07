@@ -6,7 +6,17 @@ the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
-No user-visible changes have been assigned to the next release yet.
+### Fixed
+
+- Split segments are measured before tessellation so curved geometry keeps its
+  exact dimensions and base placement during validation.
+- `inspect_cadquery` rejects multiple independent final results consistently
+  with the build tools instead of validating only the first object.
+
+### Changed
+
+- Documented independent fork development and best-effort maintenance.
+- Disabled routine Dependabot version-update pull requests.
 
 ## 0.5.0 - 2026-07-18
 

@@ -296,11 +296,13 @@ def split_artifact(
                 pb = piece.BoundingBox()
                 piece = piece.translate(cq.Vector(-(pb.xmin + pb.xmax) / 2, -(pb.ymin + pb.ymax) / 2, -pb.zmin))
                 index = len(segments)
-                artifacts = export_shape_files(piece, run_path, base_name=f"segment-{index:02d}", views=("isometric",))
+                # Tessellation can pad later bounding boxes, especially on curves.
+                # Measure and validate the exact geometry before exporting it.
                 props = shape_properties(piece)
                 validation = validate_prompt_shape(
                     "printable split segment", props, profile="printable", max_print_dim_mm=bed
                 )
+                artifacts = export_shape_files(piece, run_path, base_name=f"segment-{index:02d}", views=("isometric",))
                 all_valid = all_valid and validation.valid
                 previews.extend(artifacts.get("previews", []))
                 segments.append(

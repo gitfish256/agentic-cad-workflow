@@ -1,9 +1,13 @@
 # Security policy
 
-## Supported versions
+## Maintenance policy
 
-Security fixes are made on the latest `0.x` release line. This project is still
-beta software and has not received an independent security audit.
+This is a personal experimental project. Security reports and fixes are handled
+on a best-effort basis, with no guaranteed response time or supported release
+window. Any fixes published here target the latest code on `main`. Fork
+maintainers are responsible for updates and security decisions in their own
+releases. This project is beta software and has not received an independent
+security audit.
 
 ## Trust model
 
